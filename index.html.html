@@ -1,0 +1,1712 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AHA Code Assist - PCR, Ritmo e Diluições por Peso</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        slate: {
+                            850: '#151e2e',
+                            950: '#090d16',
+                        }
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 0.54s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #090d16;
+            color: #f8fafc;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Custom scrollbar for dark medical UI */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        .metronome-beat {
+            transform: scale(1.14);
+            box-shadow: 0 0 28px rgba(16, 185, 129, 0.75);
+            background-color: #10b981 !important;
+            color: #052e16 !important;
+        }
+        .ventilation-flash {
+            animation: ventFlash 0.8s ease-in-out;
+        }
+        @keyframes ventFlash {
+            0%, 100% { background-color: rgba(30, 58, 138, 0.4); border-color: #3b82f6; }
+            50% { background-color: rgba(37, 99, 235, 0.85); border-color: #93c5fd; box-shadow: 0 0 25px rgba(59, 130, 246, 0.7); }
+        }
+        .cycle-alert-flash {
+            animation: alertRed 1s infinite;
+        }
+        @keyframes alertRed {
+            0%, 100% { border-color: #ef4444; background-color: rgba(127, 29, 29, 0.35); }
+            50% { border-color: #fca5a5; background-color: rgba(220, 38, 38, 0.6); box-shadow: 0 0 30px rgba(239, 68, 68, 0.6); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-red-500 selection:text-white pb-12">
+
+    <!-- TOP STICKY BAR: HEADER + WEIGHT + TIMERS -->
+    <header class="sticky top-0 z-40 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 shadow-2xl">
+        <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2.5">
+            
+            <!-- Top Row: Title, Weight Control & Main PCR Action -->
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                
+                <!-- Brand & Mode Badge -->
+                <div class="flex items-center gap-2.5">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-red-600 to-red-800 flex items-center justify-center shadow-lg shadow-red-900/40 border border-red-400/30">
+                        <i class="fa-solid fa-heart-pulse text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h1 class="font-black text-base sm:text-lg tracking-tight text-white uppercase">AHA PCR <span class="text-red-500">CodeAssist</span></h1>
+                            <span id="patientCategoryBadge" class="text-[11px] font-bold uppercase px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40">
+                                PALS • Pediátrico
+                            </span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 hidden sm:block">Ritmo de RCP, Algoritmo em Tempo Real, Doses e Diluições por Peso</p>
+                    </div>
+                </div>
+
+                <!-- Dynamic Weight Selector (Highlight) -->
+                <div class="flex items-center bg-slate-900 border-2 border-amber-500/70 rounded-xl px-2.5 py-1.5 shadow-lg shadow-amber-950/20">
+                    <div class="mr-2.5">
+                        <span class="block text-[10px] font-bold uppercase tracking-wider text-amber-400">Peso do Paciente</span>
+                        <span id="broselowZoneText" class="block text-[11px] font-medium text-slate-300">Fita: Rosa/Vermelho</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button onclick="adjustWeight(-1)" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-bold flex items-center justify-center border border-slate-700 transition" title="Diminuir 1 kg">
+                            <i class="fa-solid fa-minus text-xs"></i>
+                        </button>
+                        <div class="relative flex items-center">
+                            <input type="number" id="weightInput" value="10" min="1" max="150" step="0.5"
+                                oninput="onWeightInputChange(this.value)"
+                                class="w-20 sm:w-24 text-center font-mono font-black text-xl sm:text-2xl text-amber-400 bg-slate-950 border border-slate-700 rounded-lg py-0.5 pr-6 focus:outline-none focus:border-amber-400">
+                            <span class="absolute right-2 text-xs font-bold text-slate-400 pointer-events-none">kg</span>
+                        </div>
+                        <button onclick="adjustWeight(1)" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-bold flex items-center justify-center border border-slate-700 transition" title="Aumentar 1 kg">
+                            <i class="fa-solid fa-plus text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Master PCR Start/Stop & Reset -->
+                <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <button id="btnStartPCR" onclick="togglePCRMaster()" class="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-wider flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/30 border border-red-400/40 transition active:scale-95">
+                        <i class="fa-solid fa-play" id="iconStartPCR"></i>
+                        <span id="textStartPCR">Iniciar PCR</span>
+                    </button>
+                    <button onclick="openResetModal()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition" title="Zerar PCR / Novo Atendimento">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Quick Weight Presets / Broselow Bar -->
+            <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                <span class="text-[11px] font-bold text-slate-400 uppercase mr-1 shrink-0"><i class="fa-solid fa-ruler-horizontal mr-1 text-amber-400"></i>Pesos Rápidos:</span>
+                <button onclick="setWeight(3.5)" class="weight-preset shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800/90 hover:bg-slate-700 text-slate-300 border-l-4 border-gray-400 transition">3.5 kg <span class="text-[10px] opacity-75">RN</span></button>
+                <button onclick="setWeight(5)" class="weight-preset shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800/90 hover:bg-slate-700 text-slate-300 border-l-4 border-pink-400 transition">5 kg <span class="text-[10px] opacity-75">3m</span></button>
+                <button onclick="setWeight(8)" class="weight-preset shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800/90 hover:bg-slate-700 text-slate-300 border-l-4 border-red-500 transition">8 kg <span class="text-[10px] opacity-75">8m</span></button>
+                <button onclick="setWeight(10)" class="weight-preset shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 border-l-4 border-l-purple-500 transition">10 kg <span class="text-[10px] opacity-75">1a</span></button>
+                <button onclick="setWeight(13)" class="weight-preset shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800/90 hover:bg-slate-700 text-slate-300 border-l-4 border-yellow-400 transition">13 kg <span class="text-[10px] opacity-75">2a</span></button>
+                <button onclick="setWeight(16)" class="weight-preset shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800/90 hover:bg-slate-700 text-slate-300 border-l-4 border-white transition">16 kg <span class="text-[10px] opacity-75">4a</span></button>
+                <button onclick="setWeight(20)" class="weight-preset shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800/90 hover:bg-slate-700 text-slate-300 border-l-4 border-blue-500 transition">20 kg <span class="text-[10px] opacity-75">6a</span></button>
+                <button onclick="setWeight(26)" class="weight-preset shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800/90 hover:bg-slate-700 text-slate-300 border-l-4 border-orange-500 transition">26 kg <span class="text-[10px] opacity-75">8a</span></button>
+                <button onclick="setWeight(32)" class="weight-preset shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800/90 hover:bg-slate-700 text-slate-300 border-l-4 border-green-500 transition">32 kg <span class="text-[10px] opacity-75">10a</span></button>
+                <button onclick="setWeight(40)" class="weight-preset shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800/90 hover:bg-slate-700 text-slate-300 border-l-4 border-emerald-400 transition">40 kg <span class="text-[10px] opacity-75">12a</span></button>
+                <button onclick="setWeight(70)" class="weight-preset shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-950 hover:bg-indigo-900 text-indigo-200 border border-indigo-500/40 transition">≥ 50/70 kg <span class="text-[10px] text-indigo-300">(Adulto ACLS)</span></button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT CONTAINER -->
+    <main class="max-w-7xl mx-auto w-full px-3 sm:px-6 pt-4 space-y-5 flex-1">
+
+        <!-- SECTION 1: REAL-TIME TIMERS, METRONOME & SHOCK ENERGY BAR -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+            <!-- Left 7 Cols: Timers (Total, 2-Min Cycle, Epinephrine Timer) -->
+            <div class="lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                
+                <!-- Timer 1: Tempo Total de PCR -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Tempo Total PCR</span>
+                        <span id="statusIndicatorDot" class="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
+                    </div>
+                    <div class="my-1.5 flex items-baseline justify-between">
+                        <span id="timerTotalDisplay" class="font-mono font-black text-3xl sm:text-4xl text-white tracking-tight">00:00</span>
+                        <span class="text-xs font-semibold text-slate-400">Ciclo #<span id="cycleCountBadge" class="text-white font-bold">1</span></span>
+                    </div>
+                    <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2">
+                        <span>Choques: <strong id="shockCountBadge" class="text-red-400">0</strong></span>
+                        <span>Adrenalina: <strong id="epiCountBadge" class="text-amber-400">0</strong></span>
+                        <span>Amiodarona: <strong id="amioCountBadge" class="text-purple-400">0</strong></span>
+                    </div>
+                </div>
+
+                <!-- Timer 2: Ciclo de RCP 2 Minutos -->
+                <div id="cycleCard" class="bg-slate-900/90 border-2 border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between transition-all">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-sky-400"><i class="fa-solid fa-sync mr-1"></i>Ciclo RCP (2 min)</span>
+                        <button onclick="completeCycleAndCheckRhythm()" class="text-[11px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 px-2 py-0.5 rounded-md transition" title="Reiniciar ciclo de 2 min e checar ritmo">
+                            Novo Ciclo
+                        </button>
+                    </div>
+                    <div class="my-1 flex items-baseline justify-between">
+                        <span id="timerCycleDisplay" class="font-mono font-black text-3xl sm:text-4xl text-sky-400 tracking-tight">02:00</span>
+                        <span id="cycleAlertText" class="text-[11px] font-bold uppercase text-slate-400">Em compressão</span>
+                    </div>
+                    <!-- Progress bar for 2 min -->
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden mt-1">
+                        <div id="cycleProgressBar" class="bg-sky-500 h-full w-0 transition-all duration-300"></div>
+                    </div>
+                </div>
+
+                <!-- Timer 3: Última Epinefrina (3-5 min) -->
+                <div id="epiTimerCard" class="bg-slate-900/90 border-2 border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between transition-all">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-amber-400"><i class="fa-solid fa-syringe mr-1"></i>Última Adrenalina</span>
+                        <button onclick="administerQuickEpi()" class="text-[11px] font-extrabold bg-amber-500 hover:bg-amber-400 text-slate-950 px-2 py-0.5 rounded-md shadow transition active:scale-95">
+                            + Aplicar Dose
+                        </button>
+                    </div>
+                    <div class="my-1 flex items-baseline justify-between">
+                        <span id="timerEpiDisplay" class="font-mono font-black text-3xl sm:text-4xl text-amber-400 tracking-tight">--:--</span>
+                        <span id="epiStatusText" class="text-[11px] font-bold text-slate-400">Aguardando 1ª</span>
+                    </div>
+                    <div class="text-[11px] text-slate-300 border-t border-slate-800/80 pt-1.5 flex justify-between">
+                        <span>Dose atual (<span class="weight-label">10</span>kg):</span>
+                        <strong id="quickEpiDoseTop" class="text-amber-300 font-mono">1 mL (1:10.000)</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right 5 Cols: Audiovisual CPR Metronome & Compression:Ventilation Ratio -->
+            <div id="metronomeCard" class="lg:col-span-5 bg-slate-900/95 border-2 border-emerald-500/40 rounded-2xl p-3.5 flex flex-col justify-between shadow-lg">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-2">
+                        <div id="metronomeVisualCircle" class="w-9 h-9 rounded-full bg-emerald-950 border-2 border-emerald-400 flex items-center justify-center text-emerald-300 font-black text-sm transition-transform duration-75">
+                            <i class="fa-solid fa-hand-holding-medical"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h2 class="text-xs font-extrabold uppercase tracking-wider text-emerald-400">Ritmo de Compressão (Metrônomo)</h2>
+                            </div>
+                            <p id="metronomeSubtext" class="text-[11px] text-slate-300">Comprima forte (≥ 1/3 do tórax) e rápido</p>
+                        </div>
+                    </div>
+
+                    <!-- Start/Stop Metronome Audio Button -->
+                    <button id="btnToggleMetronome" onclick="toggleMetronome()" class="px-3.5 py-2 rounded-xl font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/50 transition active:scale-95">
+                        <i class="fa-solid fa-volume-high" id="iconMetronome"></i>
+                        <span id="textMetronome">Ligar Bip (110 BPM)</span>
+                    </button>
+                </div>
+
+                <!-- Middle Controls: Ratio Selector (15:2, 30:2, Continuous) & BPM Slider -->
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 my-2.5 pt-2 border-t border-slate-800">
+                    <!-- Ratio Buttons -->
+                    <div class="sm:col-span-7 flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                        <button onclick="setCompressionRatio('15:2')" id="ratioBtn15" class="ratio-btn flex-1 py-1.5 px-2 rounded-lg text-[11px] font-extrabold bg-emerald-600 text-white transition">
+                            15:2 <span class="block text-[9px] font-normal opacity-90">2 Socorristas Ped</span>
+                        </button>
+                        <button onclick="setCompressionRatio('30:2')" id="ratioBtn30" class="ratio-btn flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold text-slate-400 hover:text-white transition">
+                            30:2 <span class="block text-[9px] font-normal opacity-80">1 Socorr / Adulto</span>
+                        </button>
+                        <button onclick="setCompressionRatio('CONT')" id="ratioBtnCont" class="ratio-btn flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold text-slate-400 hover:text-white transition">
+                            Contínuo <span class="block text-[9px] font-normal opacity-80">Via Aérea Avanç.</span>
+                        </button>
+                    </div>
+
+                    <!-- BPM Adjuster + Counter Display -->
+                    <div class="sm:col-span-5 flex items-center justify-between bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                        <div>
+                            <span class="block text-[10px] uppercase text-slate-400 font-bold">Frequência</span>
+                            <div class="flex items-center gap-1.5">
+                                <button onclick="changeBPM(-5)" class="w-5 h-5 rounded bg-slate-800 text-slate-300 text-xs flex items-center justify-center hover:bg-slate-700">-</button>
+                                <span id="bpmValueDisplay" class="font-mono font-extrabold text-sm text-emerald-400">110</span>
+                                <button onclick="changeBPM(5)" class="w-5 h-5 rounded bg-slate-800 text-slate-300 text-xs flex items-center justify-center hover:bg-slate-700">+</button>
+                                <span class="text-[10px] text-slate-400">bpm</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="block text-[10px] uppercase text-slate-400 font-bold">Contagem</span>
+                            <span id="compressionCountDisplay" class="font-mono font-black text-lg text-white">0 / 15</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom Bar: Ventilation Guidance Alert -->
+                <div id="ventilationBanner" class="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 flex items-center justify-between text-xs transition-all">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-lungs text-sky-400"></i>
+                        <span id="ventilationGuideText" class="font-semibold text-slate-300">Modo 15:2 — 15 compressões seguidas de <strong>2 ventilações</strong> (1 seg cada).</span>
+                    </div>
+                    <span id="ventActionBadge" class="hidden px-2 py-0.5 rounded bg-sky-500 text-slate-950 font-black text-[11px] uppercase animate-bounce">
+                        VENTILAR 2x!
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 2: DEFIBRILLATION / SHOCK ENERGY & AIRWAY SIZING BAR (DYNAMIC BY WEIGHT) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <!-- Shock Energy Card -->
+            <div class="lg:col-span-7 bg-gradient-to-r from-red-950/60 via-slate-900 to-slate-900 border border-red-500/40 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div class="flex items-start gap-3">
+                    <div class="w-11 h-11 rounded-xl bg-red-600/20 border border-red-500/50 flex items-center justify-center text-red-400 shrink-0 mt-0.5">
+                        <i class="fa-solid fa-bolt-lightning text-xl"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-sm font-black uppercase tracking-wider text-red-400">Carga de Desfibrilação (FV / TV sem pulso)</h3>
+                        </div>
+                        <p class="text-xs text-slate-300 mt-0.5">Calculado automaticamente para <strong class="text-amber-400"><span class="weight-label">10</span> kg</strong> (PALS: 2 J/kg → 4 J/kg → ≥4 a 10 J/kg)</p>
+                        <div class="flex flex-wrap gap-2 mt-2.5">
+                            <button onclick="deliverShock(1)" class="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-red-950 transition active:scale-95">
+                                <i class="fa-solid fa-bolt"></i> 1º Choque (2 J/kg): <span id="shock1Joules" class="font-mono font-black text-sm underline">20 J</span>
+                            </button>
+                            <button onclick="deliverShock(2)" class="px-3 py-1.5 rounded-xl bg-red-700 hover:bg-red-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition active:scale-95">
+                                <i class="fa-solid fa-bolt"></i> 2º Choque (4 J/kg): <span id="shock2Joules" class="font-mono font-black text-sm underline">40 J</span>
+                            </button>
+                            <button onclick="deliverShock(3)" class="px-3 py-1.5 rounded-xl bg-red-900/90 hover:bg-red-800 border border-red-500/40 text-red-100 font-bold text-xs flex items-center gap-1.5 transition active:scale-95">
+                                <i class="fa-solid fa-bolt"></i> ≥3º Choque (6-10 J/kg): <span id="shock3Joules" class="font-mono font-black text-sm underline">60 - 100 J</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Airway & Fluid Bolus Quick Reference -->
+            <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-extrabold uppercase tracking-wider text-sky-400"><i class="fa-solid fa-kit-medical mr-1.5"></i>Via Aérea Avançada & Expansão Volêmica</span>
+                    <button onclick="logAirwaySecured()" id="btnIntubated" class="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-sky-600 hover:text-white text-sky-300 border border-sky-500/30 transition">
+                        <i class="fa-solid fa-check mr-1"></i>Registrar IOT
+                    </button>
+                </div>
+                <div class="grid grid-cols-3 gap-2 text-center">
+                    <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-2">
+                        <span class="block text-[10px] text-slate-400 uppercase font-semibold">Tubo (Com Cuff)</span>
+                        <span id="ettCuffSize" class="font-mono font-black text-sm sm:text-base text-sky-300">3.5 - 4.0 mm</span>
+                    </div>
+                    <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-2">
+                        <span class="block text-[10px] text-slate-400 uppercase font-semibold">Fixação (Lábio)</span>
+                        <span id="ettDepthSize" class="font-mono font-black text-sm sm:text-base text-sky-300">10.5 - 12 cm</span>
+                    </div>
+                    <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-2 cursor-pointer hover:border-emerald-500/50 transition" onclick="logEvent('Expansão SF 0,9% (20 mL/kg): ' + document.getElementById('fluidBolus20').innerText, 'fluid')">
+                        <span class="block text-[10px] text-slate-400 uppercase font-semibold">SF 0,9% (20 mL/kg)</span>
+                        <span id="fluidBolus20" class="font-mono font-black text-sm sm:text-base text-emerald-400">200 mL</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- NAVIGATION TABS FOR MAIN CLINICAL MODULES -->
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+            <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                <button onclick="switchMainTab('tab-drugs')" id="tabBtn-drugs" class="main-tab-btn px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20 transition">
+                    <i class="fa-solid fa-vial-circle-check"></i> Drogas, Doses & Diluições (mL)
+                </button>
+                <button onclick="switchMainTab('tab-algorithm')" id="tabBtn-algorithm" class="main-tab-btn px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800 transition">
+                    <i class="fa-solid fa-diagram-project text-red-400"></i> Sequência / Algoritmo AHA
+                </button>
+                <button onclick="switchMainTab('tab-hsts')" id="tabBtn-hsts" class="main-tab-btn px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800 transition">
+                    <i class="fa-solid fa-magnifying-glass-chart text-sky-400"></i> Causas Reversíveis (5Hs e 5Ts)
+                </button>
+                <button onclick="switchMainTab('tab-rsi')" id="tabBtn-rsi" class="main-tab-btn px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800 transition">
+                    <i class="fa-solid fa-lungs-virus text-emerald-400"></i> Pós-PCR & Intubação (SRI)
+                </button>
+            </div>
+
+            <div class="text-xs text-slate-400 hidden md:flex items-center gap-1.5">
+                <i class="fa-solid fa-circle-info text-amber-400"></i>
+                <span>Todas as doses em <strong>mg</strong> e volumes em <strong>mL</strong> são ajustados para <strong class="text-white"><span class="weight-label">10</span> kg</strong></span>
+            </div>
+        </div>
+
+        <!-- MAIN WORKSPACE: LEFT CONTENT (8 COLS) + RIGHT EVENT LOG & QUICK ALGO (4 COLS) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+
+            <!-- LEFT 8 COLUMNS: TABS CONTENT -->
+            <div class="lg:col-span-8 space-y-4">
+
+                <!-- TAB 1: DROGAS, DOSES E DILUIÇÕES CLARAS (DEFAULT ACTIVE) -->
+                <div id="tab-drugs" class="space-y-4">
+                    
+                    <!-- Filter Banner -->
+                    <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-6 rounded-full bg-amber-400"></span>
+                            <div>
+                                <h3 class="text-sm font-extrabold text-white">Guia Prático de Preparo, Diluição e Volume a Administrar</h3>
+                                <p class="text-xs text-slate-400">Volumes prontos para aspirar na seringa para paciente de <strong class="text-amber-400"><span class="weight-label">10</span> kg</strong></p>
+                            </div>
+                        </div>
+                        <div class="flex gap-1.5">
+                            <span class="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold">
+                                <i class="fa-solid fa-flask mr-1"></i>Diluição Passo a Passo
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Drug Cards Container -->
+                    <div id="drugsContainer" class="grid grid-cols-1 gap-4">
+                        <!-- Rendered dynamically via JS updateAllCalculations() -->
+                    </div>
+                </div>
+
+                <!-- TAB 2: SEQUÊNCIA E ALGORITMO INTERATIVO AHA -->
+                <div id="tab-algorithm" class="hidden space-y-4">
+                    
+                    <!-- Rhythm Selector Switch -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                        <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-400 mb-2.5">
+                            Selecione o Ritmo Identificado no Monitor / Desfibrilador:
+                        </label>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <button onclick="selectAlgorithmPath('shockable')" id="btnAlgoShockable" class="p-3.5 rounded-xl border-2 border-red-500 bg-red-950/40 text-left transition flex items-center justify-between">
+                                <div>
+                                    <span class="inline-block px-2 py-0.5 rounded bg-red-600 text-white font-black text-[10px] uppercase mb-1">Ritmo Chocável</span>
+                                    <h4 class="text-base font-black text-white">FV / TV sem Pulso</h4>
+                                    <p class="text-xs text-red-200/80 mt-0.5">Fibrilação Ventricular ou Taquicardia Ventricular sem pulso</p>
+                                </div>
+                                <i class="fa-solid fa-bolt text-2xl text-red-400"></i>
+                            </button>
+
+                            <button onclick="selectAlgorithmPath('nonshockable')" id="btnAlgoNonShockable" class="p-3.5 rounded-xl border-2 border-slate-800 bg-slate-950/60 hover:border-sky-500/50 text-left transition flex items-center justify-between">
+                                <div>
+                                    <span class="inline-block px-2 py-0.5 rounded bg-sky-600 text-white font-black text-[10px] uppercase mb-1">Ritmo Não Chocável</span>
+                                    <h4 class="text-base font-black text-white">Assistolia / AESP</h4>
+                                    <p class="text-xs text-slate-400 mt-0.5">Adrenalina imediata + RCP de alta qualidade</p>
+                                </div>
+                                <i class="fa-solid fa-wave-square text-2xl text-sky-400"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- SHOCKABLE PATHWAY STEPS -->
+                    <div id="pathwayShockable" class="space-y-3">
+                        <div class="bg-slate-900/95 border-l-4 border-l-red-500 border border-slate-800 rounded-xl p-4">
+                            <div class="flex items-start justify-between gap-2">
+                                <div>
+                                    <span class="text-xs font-black uppercase text-red-400">Passo 1 • Ciclo 1 (00:00)</span>
+                                    <h4 class="text-base font-bold text-white mt-0.5">1º Choque Imediato + Retomar RCP por 2 Minutos</h4>
+                                    <p class="text-xs text-slate-300 mt-1">
+                                        • Aplicar <strong>1º Choque de <span class="algo-shock1 text-red-400 font-mono font-bold">20 J</span></strong> (2 J/kg; Adulto: 200J bifásico).<br>
+                                        • Reiniciar compressões imediatamente após o choque (não checar pulso agora).<br>
+                                        • Obter acesso Venoso (IV) ou Intraósseo (IO).
+                                    </p>
+                                </div>
+                                <button onclick="deliverShock(1)" class="shrink-0 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs">
+                                    Registrar 1º Choque
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-900/95 border-l-4 border-l-red-500 border border-slate-800 rounded-xl p-4">
+                            <div class="flex items-start justify-between gap-2">
+                                <div>
+                                    <span class="text-xs font-black uppercase text-red-400">Passo 2 • Após 2 Minutos (02:00) — Checar Ritmo</span>
+                                    <h4 class="text-base font-bold text-white mt-0.5">Persistência de FV/TVsp → 2º Choque + Epinefrina</h4>
+                                    <p class="text-xs text-slate-300 mt-1">
+                                        • Aplicar <strong>2º Choque de <span class="algo-shock2 text-red-400 font-mono font-bold">40 J</span></strong> (4 J/kg) e retomar RCP imediatamente.<br>
+                                        • Administrar <strong>Epinefrina <span class="algo-epi-dose text-amber-400 font-mono font-bold">0.1 mg (1 mL da 1:10.000)</span></strong> IV/IO durante a RCP.<br>
+                                        • Repetir Epinefrina a cada <strong>3 a 5 minutos</strong>. Considerar Via Aérea Avançada com capnografia.
+                                    </p>
+                                </div>
+                                <div class="flex flex-col gap-1.5 shrink-0">
+                                    <button onclick="deliverShock(2)" class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs">
+                                        2º Choque
+                                    </button>
+                                    <button onclick="administerQuickEpi()" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs">
+                                        + Epinefrina
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-900/95 border-l-4 border-l-purple-500 border border-slate-800 rounded-xl p-4">
+                            <div class="flex items-start justify-between gap-2">
+                                <div>
+                                    <span class="text-xs font-black uppercase text-purple-400">Passo 3 • Após 4 Minutos (04:00) — Checar Ritmo</span>
+                                    <h4 class="text-base font-bold text-white mt-0.5">FV/TVsp Refratária → 3º Choque + Amiodarona (ou Lidocaína)</h4>
+                                    <p class="text-xs text-slate-300 mt-1">
+                                        • Aplicar <strong>3º Choque de <span class="algo-shock3 text-red-400 font-mono font-bold">60 a 100 J</span></strong> (≥ 4 J/kg até máx 10 J/kg).<br>
+                                        • Administrar <strong>Amiodarona <span class="algo-amio-dose text-purple-300 font-mono font-bold">50 mg (1 mL pura ou 10 mL diluída)</span></strong> (5 mg/kg bolus; máx 300 mg) OU <strong>Lidocaína <span class="algo-lido-dose text-purple-300 font-mono font-bold">10 mg (0.5 mL)</span></strong> (1 mg/kg).<br>
+                                        • Tratar causas reversíveis (5Hs e 5Ts).
+                                    </p>
+                                </div>
+                                <div class="flex flex-col gap-1.5 shrink-0">
+                                    <button onclick="deliverShock(3)" class="px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white font-bold text-xs">
+                                        3º Choque
+                                    </button>
+                                    <button onclick="administerQuickAmio()" class="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs">
+                                        + Amiodarona
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- NON-SHOCKABLE PATHWAY STEPS -->
+                    <div id="pathwayNonShockable" class="hidden space-y-3">
+                        <div class="bg-slate-900/95 border-l-4 border-l-sky-500 border border-slate-800 rounded-xl p-4">
+                            <div class="flex items-start justify-between gap-2">
+                                <div>
+                                    <span class="text-xs font-black uppercase text-sky-400">Passo 1 • Imediato (Prioridade Absoluta)</span>
+                                    <h4 class="text-base font-bold text-white mt-0.5">RCP de Alta Qualidade + Epinefrina o Mais Precoce Possível</h4>
+                                    <p class="text-xs text-slate-300 mt-1">
+                                        • Em ritmos não chocáveis (Assistolia / AESP), a <strong>Epinefrina deve ser administrada imediatamente</strong> assim que houver acesso IV/IO.<br>
+                                        • Dose: <strong class="algo-epi-dose text-amber-400 font-mono">0.1 mg (1 mL da diluição 1:10.000)</strong> IV/IO, seguida de flush de SF 0,9%.<br>
+                                        • Se linha reta no monitor: checar cabos, ganho e derivação (Protocolo da Linha Reta).
+                                    </p>
+                                </div>
+                                <button onclick="administerQuickEpi()" class="shrink-0 px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs">
+                                    Aplicar Epinefrina
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-900/95 border-l-4 border-l-sky-500 border border-slate-800 rounded-xl p-4">
+                            <div class="flex items-start justify-between gap-2">
+                                <div>
+                                    <span class="text-xs font-black uppercase text-sky-400">Passo 2 • Ciclos Contínuos de 2 Minutos</span>
+                                    <h4 class="text-base font-bold text-white mt-0.5">Checar Ritmo a cada 2 Minutos + Investigar 5Hs e 5Ts</h4>
+                                    <p class="text-xs text-slate-300 mt-1">
+                                        • Repetir <strong>Epinefrina a cada 3 a 5 minutos</strong>.<br>
+                                        • Considerar via aérea avançada e capnografia (ETCO2 &lt; 10 mmHg sugere necessidade de melhorar as compressões; aumento abrupto para &gt; 35-40 mmHg sugere RCE).<br>
+                                        • Buscar e corrigir imediatamente Hipóxia (1ª causa pediátrica) e Hipovolemia (20 mL/kg SF 0,9%).
+                                    </p>
+                                </div>
+                                <button onclick="switchMainTab('tab-hsts')" class="shrink-0 px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs">
+                                    Ver 5Hs e 5Ts
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: CAUSAS REVERSÍVEIS (5Hs e 5Ts) COM CONDUTA PELO PESO -->
+                <div id="tab-hsts" class="hidden space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- 5 Hs -->
+                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+                            <h3 class="text-sm font-black uppercase tracking-wider text-sky-400 border-b border-slate-800 pb-2">
+                                <i class="fa-solid fa-h mr-1.5"></i>Os 6 Hs (PALS / ACLS)
+                            </h3>
+                            <div id="hsListContainer" class="space-y-2.5 text-xs">
+                                <!-- Populated dynamically with weight calculations -->
+                            </div>
+                        </div>
+
+                        <!-- 5 Ts -->
+                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+                            <h3 class="text-sm font-black uppercase tracking-wider text-amber-400 border-b border-slate-800 pb-2">
+                                <i class="fa-solid fa-t mr-1.5"></i>Os 5 Ts (Causas Mecânicas / Tóxicas)
+                            </h3>
+                            <div id="tsListContainer" class="space-y-2.5 text-xs">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 4: SEQUÊNCIA RÁPIDA DE INTUBAÇÃO (SRI) & PÓS-PCR -->
+                <div id="tab-rsi" class="hidden space-y-4">
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                        <h3 class="text-sm font-black uppercase tracking-wider text-emerald-400 mb-1">
+                            <i class="fa-solid fa-lungs mr-1.5"></i>Drogas de Intubação (SRI) & Vasoativos Pós-PCR (<span class="weight-label">10</span> kg)
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-3">Cálculos prontos para estabilização pós-Retorno da Circulação Espontânea (RCE) ou via aérea.</p>
+                        <div id="rsiAndPostContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- RIGHT 4 COLUMNS: REAL-TIME EVENT LOG & RCE / SUMMARY -->
+            <div class="lg:col-span-4 space-y-4">
+                
+                <!-- Quick Action Buttons Card -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                    <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-400 mb-2.5">
+                        Ações Rápidas de Sala Vermelha
+                    </h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="logEvent('Checagem de Ritmo / Pulso realizada', 'check')" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-left border border-slate-700 transition">
+                            <i class="fa-solid fa-heart-circle-check text-sky-400 block mb-1"></i>
+                            <span class="text-xs font-bold text-white block">Checar Ritmo</span>
+                            <span class="text-[10px] text-slate-400">Pausa &lt; 10 seg</span>
+                        </button>
+                        <button onclick="logEvent('Acesso Venoso / Intraósseo (IO) garantido', 'access')" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-left border border-slate-700 transition">
+                            <i class="fa-solid fa-droplet text-amber-400 block mb-1"></i>
+                            <span class="text-xs font-bold text-white block">Acesso IV / IO</span>
+                            <span class="text-[10px] text-slate-400">Registrar obtenção</span>
+                        </button>
+                        <button onclick="logROSC()" class="col-span-2 p-2.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-200 flex items-center justify-between transition">
+                            <div class="text-left">
+                                <span class="text-xs font-black uppercase text-emerald-400 block">Retorno da Circulação Espontânea (RCE)</span>
+                                <span class="text-[11px] text-emerald-200/80">Pulso central presente • Iniciar cuidados Pós-PCR</span>
+                            </div>
+                            <i class="fa-solid fa-heart-pulse text-xl text-emerald-400"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Chronological PCR Log -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col h-[460px]">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-2.5">
+                        <div>
+                            <h3 class="text-xs font-extrabold uppercase tracking-wider text-white flex items-center gap-1.5">
+                                <i class="fa-solid fa-clipboard-list text-amber-400"></i> Relatório Cronológico da PCR
+                            </h3>
+                            <p class="text-[11px] text-slate-400">Registro automático para evolução e prontuário</p>
+                        </div>
+                        <button onclick="copyPCRLog()" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition" title="Copiar resumo para o prontuário">
+                            <i class="fa-regular fa-copy"></i> Copiar
+                        </button>
+                    </div>
+
+                    <!-- Manual Note Input -->
+                    <div class="flex gap-1.5 mb-2.5">
+                        <input type="text" id="customLogInput" placeholder="Adicionar anotação rápida (ex: Glicemia 65, Gasometria)..."
+                            onkeydown="if(event.key==='Enter') addCustomNote()"
+                            class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500">
+                        <button onclick="addCustomNote()" class="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold">
+                            +
+                        </button>
+                    </div>
+
+                    <!-- Log List -->
+                    <div id="pcrLogContainer" class="flex-1 overflow-y-auto space-y-2 pr-1 text-xs font-mono">
+                        <div class="text-slate-500 text-center py-10 font-sans">
+                            <i class="fa-solid fa-clock-rotate-left text-2xl mb-2 block opacity-40"></i>
+                            Nenhuma intervenção registrada ainda.<br>
+                            Clique em <strong>"Iniciar PCR"</strong> ou registre uma medicação.
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toastNotification" class="fixed bottom-5 right-5 z-50 hidden transform transition-all duration-300 bg-slate-900 border-2 border-emerald-500 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 max-w-sm">
+        <i id="toastIcon" class="fa-solid fa-check-circle text-emerald-400 text-xl"></i>
+        <div>
+            <h4 id="toastTitle" class="text-xs font-black uppercase tracking-wider text-emerald-400">Registrado</h4>
+            <p id="toastMessage" class="text-xs text-slate-200 mt-0.5">Evento adicionado ao relatório.</p>
+        </div>
+    </div>
+
+    <!-- RESET CONFIRMATION MODAL (No window.confirm) -->
+    <div id="resetModal" class="fixed inset-0 z-50 hidden bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400">
+                    <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-black text-white">Reiniciar Atendimento de PCR?</h3>
+                    <p class="text-xs text-slate-400">Isso zerará os cronômetros, contadores e o relatório atual.</p>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-5">
+                <button onclick="closeResetModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">
+                    Cancelar
+                </button>
+                <button onclick="confirmResetPCR()" class="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-extrabold">
+                    Sim, Zerar Tudo
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- APPLICATION JAVASCRIPT -->
+    <script>
+        // ==========================================
+        // 1. GLOBAL STATE
+        // ==========================================
+        let currentWeight = 10; // Default 10 kg
+        let pcrRunning = false;
+        let totalSeconds = 0;
+        let cycleSecondsRemaining = 120; // 2 minutes = 120s
+        let epiSecondsElapsed = null; // null until 1st dose
+        let pcrInterval = null;
+
+        let cycleCount = 1;
+        let shockCount = 0;
+        let epiCount = 0;
+        let amioCount = 0;
+
+        // Metronome State
+        let metronomeActive = false;
+        let metronomeBPM = 110;
+        let compressionRatio = '15:2'; // '15:2', '30:2', 'CONT'
+        let beatCounter = 0;
+        let pauseForVentilationBeats = 0;
+        let metronomeTimer = null;
+        let audioCtx = null;
+
+        // Event Log Array
+        let eventLogs = [];
+
+        // ==========================================
+        // 2. SOUND SYNTHESIS (WEB AUDIO API)
+        // ==========================================
+        function ensureAudioContext() {
+            if (!audioCtx) {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioContextClass) {
+                    audioCtx = new AudioContextClass();
+                }
+            }
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playBeep(freq = 880, duration = 0.06, type = 'sine', gainVal = 0.25) {
+            try {
+                ensureAudioContext();
+                if (!audioCtx) return;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(gainVal, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {
+                // Ignore audio error if blocked
+            }
+        }
+
+        function playCycleAlertSound() {
+            playBeep(987.77, 0.14, 'triangle', 0.35);
+            setTimeout(() => playBeep(1318.51, 0.22, 'triangle', 0.35), 160);
+        }
+
+        // ==========================================
+        // 3. TAB SWITCHING & ALGORITHM NAVIGATION
+        // ==========================================
+        function switchMainTab(tabId) {
+            const tabs = ['tab-drugs', 'tab-algorithm', 'tab-hsts', 'tab-rsi'];
+            tabs.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+            const target = document.getElementById(tabId);
+            if (target) target.classList.remove('hidden');
+
+            const btnMap = {
+                'tab-drugs': 'tabBtn-drugs',
+                'tab-algorithm': 'tabBtn-algorithm',
+                'tab-hsts': 'tabBtn-hsts',
+                'tab-rsi': 'tabBtn-rsi'
+            };
+
+            Object.keys(btnMap).forEach(key => {
+                const btn = document.getElementById(btnMap[key]);
+                if (!btn) return;
+                if (key === tabId) {
+                    btn.className = 'main-tab-btn px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20 transition';
+                } else {
+                    btn.className = 'main-tab-btn px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800 transition';
+                }
+            });
+        }
+
+        function selectAlgorithmPath(path) {
+            const shockableDiv = document.getElementById('pathwayShockable');
+            const nonShockableDiv = document.getElementById('pathwayNonShockable');
+            const btnShock = document.getElementById('btnAlgoShockable');
+            const btnNonShock = document.getElementById('btnAlgoNonShockable');
+
+            if (path === 'shockable') {
+                shockableDiv.classList.remove('hidden');
+                nonShockableDiv.classList.add('hidden');
+                btnShock.className = 'p-3.5 rounded-xl border-2 border-red-500 bg-red-950/40 text-left transition flex items-center justify-between';
+                btnNonShock.className = 'p-3.5 rounded-xl border-2 border-slate-800 bg-slate-950/60 hover:border-sky-500/50 text-left transition flex items-center justify-between';
+                logEvent('Ritmo selecionado: CHOCÁVEL (FV / TV sem pulso)', 'rhythm');
+            } else {
+                shockableDiv.classList.add('hidden');
+                nonShockableDiv.classList.remove('hidden');
+                btnNonShock.className = 'p-3.5 rounded-xl border-2 border-sky-500 bg-sky-950/40 text-left transition flex items-center justify-between';
+                btnShock.className = 'p-3.5 rounded-xl border-2 border-slate-800 bg-slate-950/60 hover:border-red-500/50 text-left transition flex items-center justify-between';
+                logEvent('Ritmo selecionado: NÃO CHOCÁVEL (Assistolia / AESP)', 'rhythm');
+            }
+        }
+
+        // ==========================================
+        // 4. WEIGHT MANAGEMENT & DYNAMIC CALCULATIONS
+        // ==========================================
+        function fmt(num, maxDecimals = 2) {
+            return Number(Math.round(num + 'e' + maxDecimals) + 'e-' + maxDecimals);
+        }
+
+        function setWeight(kg) {
+            const parsed = parseFloat(kg);
+            if (isNaN(parsed) || parsed <= 0) return;
+            currentWeight = Math.min(Math.max(parsed, 1), 150);
+            document.getElementById('weightInput').value = currentWeight;
+            updateAllCalculations();
+            showToast('Peso Atualizado', `Cálculos ajustados para ${currentWeight} kg`, 'amber');
+        }
+
+        function adjustWeight(delta) {
+            let next = currentWeight + delta;
+            if (currentWeight < 5 && delta < 0) next = Math.max(1, currentWeight - 0.5);
+            else if (currentWeight < 5 && delta > 0) next = currentWeight + 0.5;
+            setWeight(fmt(next, 1));
+        }
+
+        function onWeightInputChange(val) {
+            const parsed = parseFloat(val);
+            if (!isNaN(parsed) && parsed >= 1 && parsed <= 180) {
+                currentWeight = parsed;
+                updateAllCalculations();
+            }
+        }
+
+        function getBroselowInfo(w) {
+            if (w < 4) return { zone: 'Cinza (RN 3-5 kg)', ettCuff: '3.0 mm', depth: '9 - 9.5 cm', cat: 'PALS • Neonato/Lactente' };
+            if (w <= 5.5) return { zone: 'Rosa (6-7 kg)', ettCuff: '3.0 - 3.5 mm', depth: '9.5 - 10.5 cm', cat: 'PALS • Lactente' };
+            if (w <= 7.5) return { zone: 'Vermelho (8-9 kg)', ettCuff: '3.5 mm', depth: '10.5 - 11 cm', cat: 'PALS • Lactente' };
+            if (w <= 11.5) return { zone: 'Roxo (10-11 kg)', ettCuff: '3.5 - 4.0 mm', depth: '11 - 12 cm', cat: 'PALS • Pediátrico' };
+            if (w <= 14.5) return { zone: 'Amarelo (12-14 kg)', ettCuff: '4.0 mm', depth: '12 - 13.5 cm', cat: 'PALS • Pediátrico' };
+            if (w <= 18.5) return { zone: 'Branco (15-18 kg)', ettCuff: '4.5 mm', depth: '13.5 - 14.5 cm', cat: 'PALS • Pediátrico' };
+            if (w <= 23) return { zone: 'Azul (19-23 kg)', ettCuff: '5.0 mm', depth: '15 - 16 cm', cat: 'PALS • Pediátrico' };
+            if (w <= 29) return { zone: 'Laranja (24-29 kg)', ettCuff: '5.5 mm', depth: '16.5 - 17.5 cm', cat: 'PALS • Pediátrico' };
+            if (w < 50) return { zone: 'Verde (30-36+ kg)', ettCuff: '6.0 - 6.5 mm', depth: '18 - 20 cm', cat: 'PALS • Criança/Adolescente' };
+            return { zone: 'Adulto (≥ 50 kg)', ettCuff: '7.0 - 8.0 mm', depth: '21 - 23 cm', cat: 'ACLS / Adulto (Doses Plenas)' };
+        }
+
+        function updateAllCalculations() {
+            const w = currentWeight;
+            const isAdult = w >= 50;
+
+            // Update all weight labels
+            document.querySelectorAll('.weight-label').forEach(el => {
+                el.textContent = w;
+            });
+
+            // Broselow & Airway Info
+            const info = getBroselowInfo(w);
+            document.getElementById('broselowZoneText').textContent = `Fita: ${info.zone}`;
+            document.getElementById('patientCategoryBadge').textContent = info.cat;
+            document.getElementById('ettCuffSize').textContent = info.ettCuff;
+            document.getElementById('ettDepthSize').textContent = info.depth;
+
+            // Fluid bolus 20 mL/kg (capped at 1000mL single bolus display for adult)
+            const bolus20 = Math.min(Math.round(w * 20), 1000);
+            document.getElementById('fluidBolus20').textContent = `${bolus20} mL`;
+
+            // Defibrillation Energies
+            const s1 = isAdult ? 200 : Math.min(Math.round(w * 2), 200);
+            const s2 = isAdult ? 200 : Math.min(Math.round(w * 4), 200);
+            const s3Min = isAdult ? 200 : Math.min(Math.round(w * 6), 200);
+            const s3Max = isAdult ? 360 : Math.min(Math.round(w * 10), 200);
+
+            document.getElementById('shock1Joules').textContent = `${s1} J`;
+            document.getElementById('shock2Joules').textContent = `${s2} J`;
+            document.getElementById('shock3Joules').textContent = isAdult ? `200 J` : `${s3Min} - ${s3Max} J`;
+
+            document.querySelectorAll('.algo-shock1').forEach(el => el.textContent = `${s1} J`);
+            document.querySelectorAll('.algo-shock2').forEach(el => el.textContent = `${s2} J`);
+            document.querySelectorAll('.algo-shock3').forEach(el => el.textContent = isAdult ? `200 J` : `${s3Min}-${s3Max} J`);
+
+            // 1. Epinephrine (0.01 mg/kg, max 1 mg)
+            // Diluted 1:10.000 (0.1 mg/mL) -> 0.1 mL/kg (max 10 mL)
+            const epiMg = Math.min(fmt(w * 0.01, 2), 1);
+            const epiDilutedMl = Math.min(fmt(w * 0.1, 1), 10);
+            const epiPureMl = Math.min(fmt(w * 0.01, 2), 1);
+
+            document.getElementById('quickEpiDoseTop').textContent = isAdult
+                ? `1 mg (1 mL pura ou 10 mL diluída)`
+                : `${epiDilutedMl} mL (diluída 1:10.000)`;
+
+            document.querySelectorAll('.algo-epi-dose').forEach(el => {
+                el.textContent = `${epiMg} mg (${epiDilutedMl} mL da solução 1:10.000)`;
+            });
+
+            // 2. Amiodarona (5 mg/kg, max 300 mg 1st dose)
+            // Standard ampoule: 150 mg / 3 mL = 50 mg/mL
+            const amioMg = Math.min(fmt(w * 5, 1), 300);
+            const amioPureMl = fmt(amioMg / 50, 2); // 0.1 mL/kg
+            // Diluted 1:10 (3 mL [150mg] + 27 mL SG5% = 30 mL -> 5 mg/mL) -> 1 mL/kg
+            const amioDilutedMl = fmt(amioMg / 5, 1);
+
+            document.querySelectorAll('.algo-amio-dose').forEach(el => {
+                el.textContent = `${amioMg} mg (${amioPureMl} mL pura ou ${amioDilutedMl} mL diluída 5mg/mL)`;
+            });
+
+            // 3. Lidocaína 2% (20 mg/mL) -> 1 mg/kg (max 100 mg)
+            const lidoMg = Math.min(fmt(w * 1, 1), 100);
+            const lidoPureMl = fmt(lidoMg / 20, 2);
+            // Diluted (1 mL [20mg] + 9 mL SF = 10 mL -> 2 mg/mL)
+            const lidoDilMl = fmt(lidoMg / 2, 1);
+
+            document.querySelectorAll('.algo-lido-dose').forEach(el => {
+                el.textContent = `${lidoMg} mg (${lidoPureMl} mL pura 2%)`;
+            });
+
+            // 4. Sulfato de Magnésio (40 mg/kg, range 25-50 mg/kg, max 2000 mg)
+            const magMg = Math.min(Math.round(w * 40), 2000);
+            const mag10Ml = fmt(magMg / 100, 1); // MgSO4 10% = 100 mg/mL
+            const mag50Ml = fmt(magMg / 500, 2); // MgSO4 50% = 500 mg/mL
+
+            // 5. Bicarbonato de Sódio 8,4% (1 mEq/mL) -> 1 mEq/kg (max 50 mEq initial)
+            const bicMeq = Math.min(Math.round(w * 1), 50);
+            const bic84Ml = bicMeq; // 1 mL/kg
+            const bicDilutedNeonatalMl = bicMeq * 2; // 1:1 com AD para < 1 ano
+
+            // 6. Gluconato de Cálcio 10% (100 mg/mL) -> 60 a 100 mg/kg (max 3000 mg = 30 mL)
+            const calcMg = Math.min(Math.round(w * 100), 3000);
+            const calcMl = fmt(calcMg / 100, 1);
+
+            // 7. Glicose (0.5 g/kg = 500 mg/kg, max 25 g)
+            const glicGrams = Math.min(fmt(w * 0.5, 1), 25);
+            const sg10Ml = Math.min(Math.round(w * 5), 250); // 5 mL/kg de SG 10%
+            const sg25Ml = Math.min(Math.round(w * 2), 100); // 2 mL/kg de Glicose 25%
+
+            // Render Drug Cards
+            renderDrugCards({
+                w, isAdult,
+                epiMg, epiDilutedMl, epiPureMl,
+                amioMg, amioPureMl, amioDilutedMl,
+                lidoMg, lidoPureMl, lidoDilMl,
+                magMg, mag10Ml, mag50Ml,
+                bicMeq, bic84Ml, bicDilutedNeonatalMl,
+                calcMg, calcMl,
+                glicGrams, sg10Ml, sg25Ml
+            });
+
+            // Render 5Hs and 5Ts with weight-specific actions
+            renderHsAndTs(w, bolus20, sg10Ml, bic84Ml, calcMl);
+
+            // Render RSI & Post-PCR vasoactive infusions
+            renderRSIAndPostPCR(w);
+        }
+
+        function renderDrugCards(d) {
+            const container = document.getElementById('drugsContainer');
+            if (!container) return;
+
+            const cardsHTML = `
+                <!-- 1. EPINEFRINA (ADRENALINA) -->
+                <div class="bg-slate-900 border-2 border-amber-500/60 rounded-2xl p-4 shadow-lg">
+                    <div class="flex flex-wrap items-start justify-between gap-2 border-b border-slate-800 pb-3">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-black text-[10px] uppercase">1ª Linha • Vasopressor PCR</span>
+                                <span class="text-xs text-slate-400 font-mono">Ampola Padrão: 1 mg/1 mL (1:1.000)</span>
+                            </div>
+                            <h4 class="text-lg font-black text-white mt-1">Epinefrina (Adrenalina) — 0,01 mg/kg IV/IO</h4>
+                        </div>
+                        <button onclick="administerQuickEpi()" class="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs uppercase flex items-center gap-1.5 shadow transition active:scale-95">
+                            <i class="fa-solid fa-syringe"></i> Registrar Dose (${d.epiDilutedMl} mL)
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                        <div class="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3">
+                            <span class="block text-[10px] font-extrabold uppercase text-amber-300">Volume a Aspirar (Diluída 1:10.000)</span>
+                            <div class="font-mono font-black text-2xl sm:text-3xl text-amber-400 mt-0.5">${d.epiDilutedMl} mL</div>
+                            <span class="text-[11px] text-slate-300 block mt-0.5">Equivale a <strong>${d.epiMg} mg</strong> (0,1 mL/kg da diluída)</span>
+                        </div>
+
+                        <div class="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs space-y-1.5">
+                            <div class="font-extrabold text-amber-400 uppercase text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-flask"></i> Como Diluir (Padrão AHA PALS 1:10.000 = 0,1 mg/mL):
+                            </div>
+                            <p class="text-slate-200">
+                                1. Aspire <strong>1 mL</strong> da ampola pura de Adrenalina (1 mg/mL) + <strong>9 mL de SF 0,9%</strong> em uma seringa de 10 mL.<br>
+                                2. Você terá <strong>10 mL de solução 0,1 mg/mL (1:10.000)</strong>.<br>
+                                3. Administre <strong class="text-amber-400 underline">${d.epiDilutedMl} mL</strong> em bolus rápido IV/IO para ${d.w} kg, seguido de flush de 5 mL de SF 0,9%. Repetir a cada <strong>3 a 5 min</strong>.
+                            </p>
+                            <p class="text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
+                                *Em pacientes adultos (≥50 kg), pode-se administrar <strong>1 mg (${d.epiPureMl} mL da ampola pura)</strong> direto + flush de 20 mL SF 0,9% ou 10 mL da diluída.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. AMIODARONA -->
+                <div class="bg-slate-900 border border-purple-500/50 rounded-2xl p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-2 border-b border-slate-800 pb-3">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="px-2 py-0.5 rounded bg-purple-600 text-white font-black text-[10px] uppercase">Antiarrítmico • FV / TV sem pulso</span>
+                                <span class="text-xs text-slate-400 font-mono">Ampola: 150 mg / 3 mL (50 mg/mL)</span>
+                            </div>
+                            <h4 class="text-lg font-black text-white mt-1">Amiodarona — 5 mg/kg em Bolus IV/IO</h4>
+                        </div>
+                        <button onclick="administerQuickAmio()" class="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs uppercase flex items-center gap-1.5 shadow transition active:scale-95">
+                            <i class="fa-solid fa-syringe"></i> Registrar Amiodarona (${d.amioMg} mg)
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                        <div class="bg-purple-500/10 border border-purple-500/40 rounded-xl p-3">
+                            <span class="block text-[10px] font-extrabold uppercase text-purple-300">Dose Calculada (${d.w} kg)</span>
+                            <div class="font-mono font-black text-2xl text-purple-300 mt-0.5">${d.amioMg} mg</div>
+                            <div class="mt-1 text-xs text-slate-200 space-y-0.5 font-mono">
+                                <div>• Pura (50mg/mL): <strong class="text-white">${d.amioPureMl} mL</strong></div>
+                                <div>• Diluída (5mg/mL): <strong class="text-purple-300">${d.amioDilutedMl} mL</strong></div>
+                            </div>
+                        </div>
+
+                        <div class="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs space-y-1.5">
+                            <div class="font-extrabold text-purple-400 uppercase text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-flask"></i> Opções de Preparo e Diluição na PCR:
+                            </div>
+                            <p class="text-slate-200">
+                                • <strong>Opção 1 (Diluída 1:10 para precisão pediátrica — 5 mg/mL):</strong> Aspire <strong>3 mL (1 ampola = 150 mg)</strong> + <strong>27 mL de SG 5% ou SF 0,9%</strong> (Total 30 mL = 5 mg/mL). Administre <strong class="text-purple-300 underline">${d.amioDilutedMl} mL</strong> (1 mL/kg) em bolus rápido.<br>
+                                • <strong>Opção 2 (Direto da ampola + Rediluição):</strong> Aspire <strong class="text-white">${d.amioPureMl} mL</strong> da ampola pura (50 mg/mL), complete para 5 a 10 mL com SG 5% e faça em bolus IV/IO após o 3º choque.
+                            </p>
+                            <p class="text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
+                                Máximo 1ª dose: <strong>300 mg (6 mL pura)</strong>. Pode repetir até 2 vezes de 5 mg/kg (máx 150 mg nas doses subsequentes; dose total máx 15 mg/kg).
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. LIDOCAÍNA 2% (SEM VASOCONSTRITOR) -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-2 border-b border-slate-800 pb-3">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="px-2 py-0.5 rounded bg-indigo-600 text-white font-black text-[10px] uppercase">Alternativa à Amiodarona</span>
+                                <span class="text-xs text-slate-400 font-mono">Frasco 2% sem vaso: 20 mg/mL</span>
+                            </div>
+                            <h4 class="text-base sm:text-lg font-black text-white mt-1">Lidocaína 2% — 1 mg/kg em Bolus IV/IO</h4>
+                        </div>
+                        <button onclick="logEvent('Lidocaína 2% administrada: ${d.lidoMg} mg (${d.lidoPureMl} mL pura)', 'drug')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white font-bold text-xs border border-slate-700 transition">
+                            + Registrar Lidocaína
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3 text-xs">
+                        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3">
+                            <span class="text-[10px] uppercase font-bold text-indigo-400 block">Dose (${d.w} kg)</span>
+                            <span class="font-mono font-black text-xl text-white">${d.lidoMg} mg</span>
+                            <div class="mt-1 font-mono text-slate-300">
+                                Pura (20 mg/mL): <strong class="text-indigo-300">${d.lidoPureMl} mL</strong><br>
+                                Diluída (2 mg/mL): <strong class="text-indigo-300">${d.lidoDilMl} mL</strong>
+                            </div>
+                        </div>
+                        <div class="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-300">
+                            <strong class="text-indigo-400 block mb-1">Preparo Prático:</strong>
+                            • <strong>Pura (20 mg/mL):</strong> Aspirar <strong>${d.lidoPureMl} mL</strong> (0,05 mL/kg) direto do frasco de Lidocaína 2% sem vasoconstritor.<br>
+                            • <strong>Diluída 1:10 (para lactentes pequenos — 2 mg/mL):</strong> 1 mL de Lidocaína 2% (20 mg) + 9 mL de SF 0,9% = 10 mL (2 mg/mL). Aspirar <strong>${d.lidoDilMl} mL</strong> (0,5 mL/kg).
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. SULFATO DE MAGNÉSIO, BICARBONATO, GLUCONATO DE CÁLCIO E GLICOSE (2x2 GRID) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    <!-- Sulfato de Magnésio -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <span class="px-2 py-0.5 rounded bg-pink-600/30 border border-pink-500/40 text-pink-300 font-bold text-[10px] uppercase">Torsades de Pointes / Hipomagnesemia</span>
+                                <button onclick="logEvent('Sulfato de Magnésio administrado: ${d.magMg} mg', 'drug')" class="text-xs font-bold text-pink-400 hover:underline">+ Registrar</button>
+                            </div>
+                            <h5 class="text-base font-black text-white mt-1.5">Sulfato de Magnésio (25–50 mg/kg)</h5>
+                            <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 my-2 font-mono text-xs">
+                                <div class="text-pink-400 font-black text-base">Dose (40 mg/kg): ${d.magMg} mg <span class="text-[10px] text-slate-400">(Máx 2.000 mg)</span></div>
+                                <div class="text-slate-300 mt-1">• Ampola <strong>10% (100 mg/mL)</strong>: aspirar <strong class="text-white">${d.mag10Ml} mL</strong></div>
+                                <div class="text-slate-300">• Ampola <strong>50% (500 mg/mL)</strong>: aspirar <strong class="text-white">${d.mag50Ml} mL</strong></div>
+                            </div>
+                            <p class="text-[11px] text-slate-400">
+                                <strong>Diluição:</strong> Diluir o volume aspirado em 10 a 20 mL de SF 0,9% ou SG 5%. Na PCR (Torsades sem pulso), infundir em bolus IV/IO (1-2 min).
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Bicarbonato de Sódio 8,4% -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <span class="px-2 py-0.5 rounded bg-sky-600/30 border border-sky-500/40 text-sky-300 font-bold text-[10px] uppercase">Acidose Grave / Hipercalemia / Tricíclicos</span>
+                                <button onclick="logEvent('Bicarbonato de Sódio 8,4%: ${d.bicMeq} mEq (${d.bic84Ml} mL)', 'drug')" class="text-xs font-bold text-sky-400 hover:underline">+ Registrar</button>
+                            </div>
+                            <h5 class="text-base font-black text-white mt-1.5">Bicarbonato de Sódio 8,4% (1 mEq/kg)</h5>
+                            <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 my-2 font-mono text-xs">
+                                <div class="text-sky-400 font-black text-base">Dose: ${d.bicMeq} mEq = ${d.bic84Ml} mL (Puro 8,4%)</div>
+                                <div class="text-slate-300 mt-1">• Apresentação 8,4%: <strong>1 mL = 1 mEq</strong> (1 mL/kg)</div>
+                                <div class="text-slate-300">• Diluído 1:1 (&lt;1 ano / RN): <strong class="text-white">${d.bicDilutedNeonatalMl} mL</strong> (${d.bic84Ml} mL Bic + ${d.bic84Ml} mL AD)</div>
+                            </div>
+                            <p class="text-[11px] text-slate-400">
+                                <strong>Atenção:</strong> Lavar a via com SF 0,9% antes e depois (inativa Adrenalina e precipita com Cálcio). Em RN/lactentes &lt; 10 kg, diluir 1:1 com Água Destilada (0,5 mEq/mL).
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Gluconato de Cálcio 10% -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <span class="px-2 py-0.5 rounded bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 font-bold text-[10px] uppercase">Hipercalemia / Hipocalcemia / Bloq. Canal Ca</span>
+                                <button onclick="logEvent('Gluconato de Cálcio 10%: ${d.calcMl} mL (${d.calcMg} mg)', 'drug')" class="text-xs font-bold text-emerald-400 hover:underline">+ Registrar</button>
+                            </div>
+                            <h5 class="text-base font-black text-white mt-1.5">Gluconato de Cálcio 10% (60–100 mg/kg)</h5>
+                            <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 my-2 font-mono text-xs">
+                                <div class="text-emerald-400 font-black text-base">Volume (1 mL/kg): ${d.calcMl} mL <span class="text-[10px] text-slate-400">(${d.calcMg} mg)</span></div>
+                                <div class="text-slate-300 mt-1">• Ampola 10% = 100 mg/mL (Máx 30 mL = 3 g)</div>
+                            </div>
+                            <p class="text-[11px] text-slate-400">
+                                <strong>Diluição:</strong> Pode ser feito puro lento ou diluído 1:1 em SF 0,9% (infundir em 3 a 5 min na PCR). Nunca administrar na mesma via do Bicarbonato sem lavar.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Glicose (Correção de Hipoglicemia) -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <span class="px-2 py-0.5 rounded bg-amber-600/30 border border-amber-500/40 text-amber-300 font-bold text-[10px] uppercase">Hipoglicemia Documentada</span>
+                                <button onclick="logEvent('Correção de Glicose (0,5 g/kg): ${d.sg10Ml} mL de SG 10%', 'drug')" class="text-xs font-bold text-amber-400 hover:underline">+ Registrar</button>
+                            </div>
+                            <h5 class="text-base font-black text-white mt-1.5">Glicose Hipertônica (0,5 a 1 g/kg)</h5>
+                            <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 my-2 font-mono text-xs">
+                                <div class="text-amber-400 font-black text-base">SG 10% (5 mL/kg): ${d.sg10Ml} mL <span class="text-[10px] text-slate-400">(${d.glicGrams} g)</span></div>
+                                <div class="text-slate-300 mt-1">• Glicose 25% (2 mL/kg): <strong class="text-white">${d.sg25Ml} mL</strong></div>
+                            </div>
+                            <p class="text-[11px] text-slate-400">
+                                <strong>Como preparar SG 10% (100 mL):</strong> 90 mL de SG 5% + 10 mL de Glicose 50%.<br>
+                                <strong>Como preparar Glicose 25%:</strong> Diluir Glicose 50% 1:1 com Água Destilada (ex: 10 mL G50% + 10 mL AD).
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            container.innerHTML = cardsHTML;
+        }
+
+        function renderHsAndTs(w, bolus20, sg10Ml, bic84Ml, calcMl) {
+            const hsContainer = document.getElementById('hsListContainer');
+            const tsContainer = document.getElementById('tsListContainer');
+            if (!hsContainer || !tsContainer) return;
+
+            hsContainer.innerHTML = `
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+                    <div class="font-bold text-white">1. Hipóxia <span class="text-sky-400">(Principal causa em Pediatria)</span></div>
+                    <p class="text-slate-400 mt-0.5">Oferecer O2 a 100%, garantir elevação torácica visível, considerar IOT (${document.getElementById('ettCuffSize').textContent}) e capnografia.</p>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+                    <div class="font-bold text-white">2. Hipovolemia</div>
+                    <p class="text-slate-400 mt-0.5">Administrar bolus de <strong>SF 0,9% ou Ringer Lactato 20 mL/kg = <span class="text-emerald-400 font-mono">${bolus20} mL</span></strong> rápido. Repetir se necessário.</p>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+                    <div class="font-bold text-white">3. H+ (Acidose Metabólica Grave)</div>
+                    <p class="text-slate-400 mt-0.5">Garantir ventilação adequada; se refratária: <strong>Bicarbonato 8,4% 1 mEq/kg = <span class="text-sky-400 font-mono">${bic84Ml} mL</span></strong>.</p>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+                    <div class="font-bold text-white">4. Hipo / Hipercalemia (Potássio)</div>
+                    <p class="text-slate-400 mt-0.5">Hipercalemia: <strong>Gluconato de Cálcio 10% = <span class="text-emerald-400 font-mono">${calcMl} mL</span></strong> + Bicarbonato ${bic84Ml} mL.</p>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+                    <div class="font-bold text-white">5. Hipoglicemia</div>
+                    <p class="text-slate-400 mt-0.5">Checar HGT imediato. Se &lt; 60 mg/dL: <strong>SG 10% 5 mL/kg = <span class="text-amber-400 font-mono">${sg10Ml} mL</span></strong> IV/IO.</p>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+                    <div class="font-bold text-white">6. Hipotermia</div>
+                    <p class="text-slate-400 mt-0.5">Aquecimento ativo (mantas térmicas, soro aquecido). Não declarar óbito até aquecer.</p>
+                </div>
+            `;
+
+            tsContainer.innerHTML = `
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+                    <div class="font-bold text-white">1. Tensão no Tórax (Pneumotórax Hipertensivo)</div>
+                    <p class="text-slate-400 mt-0.5">Assimetria torácica, ausência de MV unilateral, turgência jugular → <strong>Toracocentese de alívio imediata</strong> (2º EIC LHC ou 4º/5º EIC LAA) seguida de drenagem.</p>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+                    <div class="font-bold text-white">2. Tamponamento Cardíaco</div>
+                    <p class="text-slate-400 mt-0.5">Abafamento de bulhas, derrame pericárdico no POCUS → <strong>Pericardiocentese de emergência</strong> + expansão volêmica (${bolus20} mL).</p>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+                    <div class="font-bold text-white">3. Toxinas / Intoxicações Exógenas</div>
+                    <p class="text-slate-400 mt-0.5">Opioides: <strong>Naloxona ${fmt(Math.min(w * 0.1, 2), 2)} mg</strong> (0,1 mg/kg, máx 2 mg). Tricíclicos: Bicarbonato ${bic84Ml} mL.</p>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+                    <div class="font-bold text-white">4. Trombose Pulmonar (TEP Maciço)</div>
+                    <p class="text-slate-400 mt-0.5">Considerar fibrinolítico (Alteplase) se forte suspeita clínica/ecocardiográfica.</p>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+                    <div class="font-bold text-white">5. Trombose Coronariana (IAM)</div>
+                    <p class="text-slate-400 mt-0.5">ECG de 12 derivações após retorno da circulação espontânea (RCE) e hemodinâmica.</p>
+                </div>
+            `;
+        }
+
+        function renderRSIAndPostPCR(w) {
+            const container = document.getElementById('rsiAndPostContainer');
+            if (!container) return;
+
+            // Cetamina (10 mg/mL ou 50 mg/mL): 2 mg/kg
+            const ketaMg = fmt(Math.min(w * 2, 200), 1);
+            const keta50Ml = fmt(ketaMg / 50, 2); // Frasco 50 mg/mL
+
+            // Etomidato (2 mg/mL): 0.3 mg/kg
+            const etoMg = fmt(Math.min(w * 0.3, 30), 1);
+            const etoMl = fmt(etoMg / 2, 2);
+
+            // Rocurônio (10 mg/mL): 1 mg/kg
+            const rocMg = fmt(Math.min(w * 1, 100), 1);
+            const rocMl = fmt(rocMg / 10, 2);
+
+            // Midazolam (5 mg/mL): 0.2 mg/kg
+            const midaMg = fmt(Math.min(w * 0.2, 15), 1);
+            const midaMl = fmt(midaMg / 5, 2);
+
+            // Atropina (0.25 mg/mL ou 0.5 mg/mL): 0.02 mg/kg (min 0.1 mg, max 0.5 mg child / 1 mg adult)
+            const atroMg = fmt(Math.min(Math.max(w * 0.02, 0.1), 0.5), 2);
+            const atro025Ml = fmt(atroMg / 0.25, 2);
+
+            // Noradrenalina / Adrenalina Contínua Pós-PCR (0.1 mcg/kg/min inicial)
+            // Diluição padrão: 4 mg (4 mL) + 96 mL SG 5% = 100 mL (40 mcg/mL)
+            const noraMcgMin = fmt(w * 0.1, 2);
+            const noraMlHora = fmt((noraMcgMin * 60) / 40, 1);
+
+            container.innerHTML = `
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs">
+                    <span class="text-[10px] font-black uppercase text-emerald-400">Indutor • Estabilidade Hemodinâmica</span>
+                    <h4 class="font-bold text-white text-sm mt-0.5">Cetamina (2 mg/kg IV)</h4>
+                    <div class="font-mono text-emerald-300 font-bold text-base my-1">${ketaMg} mg = ${keta50Ml} mL <span class="text-xs text-slate-400">(frasco 50 mg/mL)</span></div>
+                    <p class="text-slate-400 text-[11px]">Pode diluir em 5 mL de SF 0,9% para facilitar administração lenta (30-60 seg).</p>
+                </div>
+
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs">
+                    <span class="text-[10px] font-black uppercase text-emerald-400">Indutor • Neutro Cardiovascular</span>
+                    <h4 class="font-bold text-white text-sm mt-0.5">Etomidato (0,3 mg/kg IV)</h4>
+                    <div class="font-mono text-emerald-300 font-bold text-base my-1">${etoMg} mg = ${etoMl} mL <span class="text-xs text-slate-400">(ampola 2 mg/mL)</span></div>
+                    <p class="text-slate-400 text-[11px]">Pronto para uso (20 mg/10 mL = 2 mg/mL). Evitar no choque séptico.</p>
+                </div>
+
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs">
+                    <span class="text-[10px] font-black uppercase text-sky-400">Bloqueador Neuromuscular</span>
+                    <h4 class="font-bold text-white text-sm mt-0.5">Rocurônio (1 mg/kg IV)</h4>
+                    <div class="font-mono text-sky-300 font-bold text-base my-1">${rocMg} mg = ${rocMl} mL <span class="text-xs text-slate-400">(frasco 10 mg/mL)</span></div>
+                    <p class="text-slate-400 text-[11px]">Frasco padrão: 50 mg / 5 mL (10 mg/mL). Paralisia em 45–60 segundos.</p>
+                </div>
+
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs">
+                    <span class="text-[10px] font-black uppercase text-amber-400">Bradicardia Vagal / Pós-PCR</span>
+                    <h4 class="font-bold text-white text-sm mt-0.5">Atropina (0,02 mg/kg) & Sedação Midazolam</h4>
+                    <div class="font-mono text-amber-300 font-bold text-xs my-1">
+                        • Atropina (0,25 mg/mL): ${atroMg} mg = <strong>${atro025Ml} mL</strong><br>
+                        • Midazolam (5 mg/mL - 0,2mg/kg): ${midaMg} mg = <strong>${midaMl} mL</strong>
+                    </div>
+                </div>
+
+                <div class="md:col-span-2 bg-slate-950 border border-amber-500/40 rounded-xl p-3 text-xs">
+                    <span class="text-[10px] font-black uppercase text-amber-400">Choque Pós-PCR (Retorno da Circulação Espontânea)</span>
+                    <h4 class="font-bold text-white text-sm mt-0.5">Infusão Contínua: Noradrenalina ou Adrenalina (0,1 a 1 mcg/kg/min)</h4>
+                    <p class="text-slate-300 mt-1">
+                        • <strong>Diluição Padrão (40 mcg/mL):</strong> 1 ampola de Noradrenalina (4 mg / 4 mL) + <strong>96 mL de SG 5%</strong> = 100 mL (40 mcg/mL).<br>
+                        • <strong>Vazão inicial (0,1 mcg/kg/min para ${w} kg = ${noraMcgMin} mcg/min):</strong> Iniciar bomba de infusão a <strong class="text-amber-400 font-mono text-sm">${noraMlHora} mL/h</strong> e titular conforme PA/perfusão.
+                    </p>
+                </div>
+            `;
+        }
+
+        // ==========================================
+        // 5. METRONOME & COMPRESSION:VENTILATION LOGIC
+        // ==========================================
+        function toggleMetronome() {
+            ensureAudioContext();
+            metronomeActive = !metronomeActive;
+            const btn = document.getElementById('btnToggleMetronome');
+            const text = document.getElementById('textMetronome');
+
+            if (metronomeActive) {
+                beatCounter = 0;
+                pauseForVentilationBeats = 0;
+                btn.className = 'px-3.5 py-2 rounded-xl font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white shadow-md transition active:scale-95';
+                text.textContent = `Parar Bip (${metronomeBPM} BPM)`;
+                startMetronomeInterval();
+                logEvent(`Metrônomo de RCP ativado (${metronomeBPM} BPM • Modo ${compressionRatio})`, 'cpr');
+            } else {
+                stopMetronomeInterval();
+                btn.className = 'px-3.5 py-2 rounded-xl font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/50 transition active:scale-95';
+                text.textContent = `Ligar Bip (${metronomeBPM} BPM)`;
+            }
+        }
+
+        function startMetronomeInterval() {
+            if (metronomeTimer) clearInterval(metronomeTimer);
+            const intervalMs = Math.round(60000 / metronomeBPM);
+            metronomeTick();
+            metronomeTimer = setInterval(metronomeTick, intervalMs);
+        }
+
+        function stopMetronomeInterval() {
+            if (metronomeTimer) {
+                clearInterval(metronomeTimer);
+                metronomeTimer = null;
+            }
+            const circle = document.getElementById('metronomeVisualCircle');
+            if (circle) circle.classList.remove('metronome-beat');
+            document.getElementById('ventActionBadge').classList.add('hidden');
+        }
+
+        function metronomeTick() {
+            const circle = document.getElementById('metronomeVisualCircle');
+            const countDisplay = document.getElementById('compressionCountDisplay');
+            const ventBadge = document.getElementById('ventActionBadge');
+            const ventBanner = document.getElementById('ventilationBanner');
+
+            // Check if currently pausing for 2 rescue breaths (in 15:2 or 30:2)
+            if (pauseForVentilationBeats > 0) {
+                pauseForVentilationBeats--;
+                ventBadge.classList.remove('hidden');
+                ventBanner.classList.add('ventilation-flash');
+                if (pauseForVentilationBeats === 4 || pauseForVentilationBeats === 1) {
+                    // Distinct lower pitch breath prompt tone
+                    playBeep(523.25, 0.28, 'sine', 0.3);
+                }
+                countDisplay.textContent = `VENTILAR`;
+                if (pauseForVentilationBeats === 0) {
+                    ventBadge.classList.add('hidden');
+                    ventBanner.classList.remove('ventilation-flash');
+                    beatCounter = 0;
+                }
+                return;
+            }
+
+            beatCounter++;
+            const targetCompressions = compressionRatio === '15:2' ? 15 : (compressionRatio === '30:2' ? 30 : 0);
+
+            // Visual pulse
+            circle.classList.add('metronome-beat');
+            setTimeout(() => circle.classList.remove('metronome-beat'), 130);
+
+            if (compressionRatio === 'CONT') {
+                // Continuous compressions + ventilation cue every 5 beats (~2.7 sec -> ~22 breaths/min)
+                countDisplay.textContent = `${beatCounter} (Cont)`;
+                if (beatCounter % 5 === 0) {
+                    playBeep(1174.66, 0.09, 'triangle', 0.3);
+                    ventBadge.textContent = 'VENTILAR 1x';
+                    ventBadge.classList.remove('hidden');
+                    setTimeout(() => ventBadge.classList.add('hidden'), 650);
+                } else {
+                    playBeep(880, 0.05, 'sine', 0.22);
+                }
+            } else {
+                countDisplay.textContent = `${beatCounter} / ${targetCompressions}`;
+                if (beatCounter >= targetCompressions) {
+                    // Accent last compression beat and trigger ventilation window (~3.2 seconds = 6 beats)
+                    playBeep(1046.5, 0.1, 'triangle', 0.32);
+                    ventBadge.textContent = 'VENTILAR 2x!';
+                    pauseForVentilationBeats = 6;
+                } else {
+                    playBeep(880, 0.05, 'sine', 0.22);
+                }
+            }
+        }
+
+        function setCompressionRatio(ratio) {
+            compressionRatio = ratio;
+            beatCounter = 0;
+            pauseForVentilationBeats = 0;
+
+            const btn15 = document.getElementById('ratioBtn15');
+            const btn30 = document.getElementById('ratioBtn30');
+            const btnCont = document.getElementById('ratioBtnCont');
+            const guideText = document.getElementById('ventilationGuideText');
+            const countDisplay = document.getElementById('compressionCountDisplay');
+
+            const inactiveClass = 'ratio-btn flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold text-slate-400 hover:text-white transition';
+            const activeClass = 'ratio-btn flex-1 py-1.5 px-2 rounded-lg text-[11px] font-extrabold bg-emerald-600 text-white transition';
+
+            btn15.className = ratio === '15:2' ? activeClass : inactiveClass;
+            btn30.className = ratio === '30:2' ? activeClass : inactiveClass;
+            btnCont.className = ratio === 'CONT' ? activeClass : inactiveClass;
+
+            if (ratio === '15:2') {
+                guideText.innerHTML = 'Modo 15:2 — 15 compressões seguidas de <strong>2 ventilações</strong> (2 socorristas pediátrico).';
+                countDisplay.textContent = '0 / 15';
+            } else if (ratio === '30:2') {
+                guideText.innerHTML = 'Modo 30:2 — 30 compressões seguidas de <strong>2 ventilações</strong> (1 socorrista ou adulto).';
+                countDisplay.textContent = '0 / 30';
+            } else {
+                guideText.innerHTML = 'Via Aérea Avançada — Compressões contínuas + <strong>1 ventilação a cada 2 a 3 seg</strong> (20-30/min).';
+                countDisplay.textContent = '0 (Cont)';
+            }
+        }
+
+        function changeBPM(delta) {
+            metronomeBPM = Math.min(Math.max(metronomeBPM + delta, 100), 120);
+            document.getElementById('bpmValueDisplay').textContent = metronomeBPM;
+            if (metronomeActive) {
+                document.getElementById('textMetronome').textContent = `Parar Bip (${metronomeBPM} BPM)`;
+                startMetronomeInterval();
+            } else {
+                document.getElementById('textMetronome').textContent = `Ligar Bip (${metronomeBPM} BPM)`;
+            }
+        }
+
+        // ==========================================
+        // 6. PCR TIMERS & CLINICAL ACTIONS
+        // ==========================================
+        function formatTimeMMSS(sec) {
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        function togglePCRMaster() {
+            ensureAudioContext();
+            pcrRunning = !pcrRunning;
+            const btn = document.getElementById('btnStartPCR');
+            const icon = document.getElementById('iconStartPCR');
+            const txt = document.getElementById('textStartPCR');
+            const dot = document.getElementById('statusIndicatorDot');
+
+            if (pcrRunning) {
+                btn.className = 'flex-1 sm:flex-initial px-4 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-wider flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg transition active:scale-95';
+                icon.className = 'fa-solid fa-pause';
+                txt.textContent = 'Pausar PCR';
+                dot.className = 'w-2.5 h-2.5 rounded-full bg-red-500 animate-ping';
+
+                if (totalSeconds === 0) {
+                    logEvent(`Início do Atendimento de PCR (Peso estimado: ${currentWeight} kg)`, 'start');
+                } else {
+                    logEvent('Cronômetro de PCR retomado', 'cpr');
+                }
+
+                if (!pcrInterval) {
+                    pcrInterval = setInterval(tickPCRTimers, 1000);
+                }
+            } else {
+                btn.className = 'flex-1 sm:flex-initial px-4 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-wider flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/30 border border-red-400/40 transition active:scale-95';
+                icon.className = 'fa-solid fa-play';
+                txt.textContent = 'Retomar PCR';
+                dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400';
+
+                if (pcrInterval) {
+                    clearInterval(pcrInterval);
+                    pcrInterval = null;
+                }
+                logEvent('Cronômetro de PCR pausado', 'check');
+            }
+        }
+
+        function tickPCRTimers() {
+            totalSeconds++;
+            document.getElementById('timerTotalDisplay').textContent = formatTimeMMSS(totalSeconds);
+
+            // 2-Minute Cycle Timer
+            if (cycleSecondsRemaining > 0) {
+                cycleSecondsRemaining--;
+            }
+            document.getElementById('timerCycleDisplay').textContent = formatTimeMMSS(cycleSecondsRemaining);
+
+            const progressPct = Math.min(100, ((120 - cycleSecondsRemaining) / 120) * 100);
+            document.getElementById('cycleProgressBar').style.width = `${progressPct}%`;
+
+            const cycleCard = document.getElementById('cycleCard');
+            const cycleAlertText = document.getElementById('cycleAlertText');
+
+            if (cycleSecondsRemaining === 0) {
+                cycleCard.classList.add('cycle-alert-flash');
+                cycleAlertText.textContent = 'CHECAR RITMO / TROCAR!';
+                cycleAlertText.className = 'text-[11px] font-black uppercase text-red-400 animate-pulse';
+                playCycleAlertSound();
+            }
+
+            // Epinephrine Timer (3-5 min alert)
+            if (epiSecondsElapsed !== null) {
+                epiSecondsElapsed++;
+                document.getElementById('timerEpiDisplay').textContent = formatTimeMMSS(epiSecondsElapsed);
+                const epiCard = document.getElementById('epiTimerCard');
+                const epiStatus = document.getElementById('epiStatusText');
+
+                if (epiSecondsElapsed >= 180) { // >= 3 minutes
+                    epiCard.classList.add('cycle-alert-flash');
+                    epiStatus.textContent = 'REPETIR ADRENALINA (3-5m)!';
+                    epiStatus.className = 'text-[11px] font-black text-red-400';
+                } else {
+                    epiCard.classList.remove('cycle-alert-flash');
+                    epiStatus.textContent = `Dose #${epiCount} ativa`;
+                    epiStatus.className = 'text-[11px] font-bold text-amber-300';
+                }
+            }
+        }
+
+        function completeCycleAndCheckRhythm() {
+            cycleCount++;
+            cycleSecondsRemaining = 120;
+            document.getElementById('cycleCountBadge').textContent = cycleCount;
+            document.getElementById('timerCycleDisplay').textContent = '02:00';
+            document.getElementById('cycleProgressBar').style.width = '0%';
+            document.getElementById('cycleCard').classList.remove('cycle-alert-flash');
+            const cycleAlertText = document.getElementById('cycleAlertText');
+            cycleAlertText.textContent = 'Em compressão';
+            cycleAlertText.className = 'text-[11px] font-bold uppercase text-slate-400';
+
+            logEvent(`Início do Ciclo #${cycleCount} de RCP (Checagem de ritmo e troca de socorrista)`, 'check');
+            showToast('Novo Ciclo de 2 Min', `Ciclo #${cycleCount} iniciado.`, 'sky');
+        }
+
+        function deliverShock(stepLevel) {
+            if (!pcrRunning) togglePCRMaster();
+            shockCount++;
+            document.getElementById('shockCountBadge').textContent = shockCount;
+
+            let joulesText = document.getElementById('shock1Joules').textContent;
+            if (stepLevel === 2) joulesText = document.getElementById('shock2Joules').textContent;
+            if (stepLevel >= 3) joulesText = document.getElementById('shock3Joules').textContent;
+
+            logEvent(`CHOQUE #${shockCount} administrado — Carga: ${joulesText} (Retomar RCP imediatamente)`, 'shock');
+            showToast(`Choque #${shockCount} Aplicado`, `Carga: ${joulesText}. Retome as compressões!`, 'red');
+
+            // Reset 2-min cycle after shock
+            cycleSecondsRemaining = 120;
+            document.getElementById('cycleCard').classList.remove('cycle-alert-flash');
+        }
+
+        function administerQuickEpi() {
+            if (!pcrRunning) togglePCRMaster();
+            epiCount++;
+            epiSecondsElapsed = 0;
+            document.getElementById('epiCountBadge').textContent = epiCount;
+            document.getElementById('timerEpiDisplay').textContent = '00:00';
+            document.getElementById('epiTimerCard').classList.remove('cycle-alert-flash');
+            document.getElementById('epiStatusText').textContent = `Dose #${epiCount} aplicada`;
+
+            const epiMg = Math.min(fmt(currentWeight * 0.01, 2), 1);
+            const epiDilMl = Math.min(fmt(currentWeight * 0.1, 1), 10);
+
+            logEvent(`EPINEFRINA #${epiCount} administrada: ${epiMg} mg (${epiDilMl} mL da diluição 1:10.000) IV/IO`, 'epi');
+            showToast(`Adrenalina #${epiCount} Registrada`, `${epiMg} mg (${epiDilMl} mL 1:10.000). Cronômetro de 3-5 min iniciado.`, 'amber');
+        }
+
+        function administerQuickAmio() {
+            if (!pcrRunning) togglePCRMaster();
+            amioCount++;
+            document.getElementById('amioCountBadge').textContent = amioCount;
+            const amioMg = Math.min(fmt(currentWeight * 5, 1), 300);
+            const amioPureMl = fmt(amioMg / 50, 2);
+
+            logEvent(`AMIODARONA #${amioCount} administrada: ${amioMg} mg (${amioPureMl} mL ampola pura / ${fmt(amioMg / 5, 1)} mL diluída) IV/IO`, 'drug');
+            showToast(`Amiodarona #${amioCount} Registrada`, `Dose de ${amioMg} mg adicionada ao relatório.`, 'purple');
+        }
+
+        function logAirwaySecured() {
+            setCompressionRatio('CONT');
+            const tubo = document.getElementById('ettCuffSize').textContent;
+            const fixacao = document.getElementById('ettDepthSize').textContent;
+            logEvent(`Via Aérea Avançada (IOT) garantida — Tubo ${tubo} (Fixação ${fixacao}). Mudado para compressões contínuas.`, 'airway');
+            showToast('Via Aérea Avançada', 'Metrônomo alterado para compressões contínuas.', 'sky');
+        }
+
+        function logROSC() {
+            if (pcrRunning) togglePCRMaster();
+            if (metronomeActive) toggleMetronome();
+            logEvent('RETORNO DA CIRCULAÇÃO ESPONTÂNEA (RCE / ROSC) confirmado! Iniciando cuidados pós-PCR.', 'rosc');
+            switchMainTab('tab-rsi');
+            showToast('RCE / ROSC Confirmado!', 'Aba de estabilização Pós-PCR e vasoativos aberta.', 'emerald');
+        }
+
+        // ==========================================
+        // 7. EVENT LOGGING & CLIPBOARD EXPORT
+        // ==========================================
+        function logEvent(description, type = 'info') {
+            const now = new Date();
+            const clockTime = now.toTimeString().split(' ')[0];
+            const pcrTime = formatTimeMMSS(totalSeconds);
+
+            eventLogs.unshift({
+                clockTime,
+                pcrTime,
+                description,
+                type
+            });
+
+            renderLogList();
+        }
+
+        function addCustomNote() {
+            const input = document.getElementById('customLogInput');
+            const text = input.value.trim();
+            if (!text) return;
+            logEvent(`Nota: ${text}`, 'note');
+            input.value = '';
+        }
+
+        function renderLogList() {
+            const container = document.getElementById('pcrLogContainer');
+            if (!container) return;
+
+            if (eventLogs.length === 0) {
+                container.innerHTML = `
+                    <div class="text-slate-500 text-center py-10 font-sans">
+                        <i class="fa-solid fa-clock-rotate-left text-2xl mb-2 block opacity-40"></i>
+                        Nenhuma intervenção registrada ainda.<br>
+                        Clique em <strong>"Iniciar PCR"</strong> ou registre uma medicação.
+                    </div>
+                `;
+                return;
+            }
+
+            const badgeColors = {
+                start: 'border-red-500/50 bg-red-950/30 text-red-200',
+                shock: 'border-red-500 bg-red-900/40 text-red-100',
+                epi: 'border-amber-500/60 bg-amber-950/40 text-amber-200',
+                drug: 'border-purple-500/50 bg-purple-950/30 text-purple-200',
+                rosc: 'border-emerald-500 bg-emerald-950/50 text-emerald-200',
+                airway: 'border-sky-500/50 bg-sky-950/40 text-sky-200',
+                fluid: 'border-emerald-500/40 bg-slate-950 text-emerald-300',
+                default: 'border-slate-800 bg-slate-950 text-slate-300'
+            };
+
+            container.innerHTML = eventLogs.map(item => {
+                const styleClass = badgeColors[item.type] || badgeColors.default;
+                return `
+                    <div class="border-l-4 rounded-r-xl p-2.5 ${styleClass}">
+                        <div class="flex items-center justify-between text-[10px] opacity-80 mb-0.5">
+                            <span><i class="fa-regular fa-clock mr-1"></i>Hora: ${item.clockTime}</span>
+                            <span class="font-bold">PCR T+${item.pcrTime}</span>
+                        </div>
+                        <div class="font-sans font-semibold text-xs leading-snug">${item.description}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function copyPCRLog() {
+            const header = `=== RELATÓRIO DE ATENDIMENTO DE PCR (AHA PALS/ACLS) ===\n` +
+                `Peso Estimado: ${currentWeight} kg | Tempo Total PCR: ${formatTimeMMSS(totalSeconds)}\n` +
+                `Ciclos RCP: ${cycleCount} | Choques: ${shockCount} | Doses Adrenalina: ${epiCount} | Doses Amiodarona: ${amioCount}\n` +
+                `--------------------------------------------------------\n`;
+
+            const body = eventLogs.slice().reverse().map(e => `[${e.clockTime} | PCR ${e.pcrTime}] ${e.description}`).join('\n');
+            const fullText = header + (body || 'Sem eventos registrados.');
+
+            const textarea = document.createElement('textarea');
+            textarea.value = fullText;
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showToast('Relatório Copiado!', 'Resumo cronológico copiado para a área de transferência.', 'emerald');
+            } catch (err) {
+                showToast('Aviso', 'Não foi possível copiar automaticamente.', 'amber');
+            }
+            document.body.removeChild(textarea);
+        }
+
+        // ==========================================
+        // 8. MODAL & TOAST HELPERS
+        // ==========================================
+        function openResetModal() {
+            document.getElementById('resetModal').classList.remove('hidden');
+        }
+
+        function closeResetModal() {
+            document.getElementById('resetModal').classList.add('hidden');
+        }
+
+        function confirmResetPCR() {
+            closeResetModal();
+            if (pcrRunning) togglePCRMaster();
+            if (metronomeActive) toggleMetronome();
+
+            totalSeconds = 0;
+            cycleSecondsRemaining = 120;
+            epiSecondsElapsed = null;
+            cycleCount = 1;
+            shockCount = 0;
+            epiCount = 0;
+            amioCount = 0;
+            eventLogs = [];
+
+            document.getElementById('timerTotalDisplay').textContent = '00:00';
+            document.getElementById('timerCycleDisplay').textContent = '02:00';
+            document.getElementById('timerEpiDisplay').textContent = '--:--';
+            document.getElementById('cycleProgressBar').style.width = '0%';
+            document.getElementById('cycleCountBadge').textContent = '1';
+            document.getElementById('shockCountBadge').textContent = '0';
+            document.getElementById('epiCountBadge').textContent = '0';
+            document.getElementById('amioCountBadge').textContent = '0';
+            document.getElementById('epiStatusText').textContent = 'Aguardando 1ª';
+            document.getElementById('textStartPCR').textContent = 'Iniciar PCR';
+            document.getElementById('cycleCard').classList.remove('cycle-alert-flash');
+            document.getElementById('epiTimerCard').classList.remove('cycle-alert-flash');
+
+            renderLogList();
+            showToast('PCR Reiniciada', 'Todos os cronômetros e registros foram zerados.', 'sky');
+        }
+
+        let toastTimeout = null;
+        function showToast(title, message, color = 'emerald') {
+            const toast = document.getElementById('toastNotification');
+            const titleEl = document.getElementById('toastTitle');
+            const msgEl = document.getElementById('toastMessage');
+
+            titleEl.textContent = title;
+            msgEl.textContent = message;
+            toast.classList.remove('hidden');
+
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3000);
+        }
+
+        // ==========================================
+        // 9. INITIALIZE ON WINDOW LOAD
+        // ==========================================
+        window.onload = function () {
+            updateAllCalculations();
+        };
+    </script>
+</body>
+</html>
